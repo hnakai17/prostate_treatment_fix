@@ -103,4 +103,4 @@ def extract_new_preMRIstatus(MRI_spreadsheet):
     # return a simple DataFrame 
     return_cols = ["exist_treatment_words", "Pre_MR_Dx_wo_mc", "Pre_MR_Dx"]
     return_cols_renamed = [f"new_{x}" for x in return_cols]
-    return results[["report"]+return_cols].rename(columns:dict(zip(return_cols, return_cols_renamed)))
+    return results[["report", "old_exist_treatment_words"]+return_cols].rename(columns:dict(zip(return_cols, return_cols_renamed)))
