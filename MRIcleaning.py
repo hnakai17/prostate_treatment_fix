@@ -335,11 +335,24 @@ def MRIcleaning_preMRIstatus(results, ds_report, preMRIstatus_jsonfile = "preMRI
     results["exist_incomplete_words"] = ds_report.str.contains(preMRI_status_dic["incomplete"], case=False).fillna(False)
     results["exist_reseach_word"] = ds_report.str.contains("research", case=False)
 
+    # The following few lines of code were added in April 2025 to update the post-treatment status for csPCa.
+    results["is_post_treatment"] = ds_report.apply(is_post_treatment)
+    results["exist_treatment_words"] = results["exist_treatment_words"] & results["is_post_treatment"]
+
     # consider the status in combination (with Gleason score etc.)
     preMRI_scr = results["exist_Scr_words"]|results["PreMRI_Gleason"].isin([4,5])
     preMRI_AS = results["exist_AS_words"]|results["PreMRI_Gleason"].isin([6])
-    preMRI_csPCa = ds_report.str.contains("prostatectomy", case=False)|results["CLINICAL_HISTORY"].fillna("").str.contains("metastatic prostate (cancer|carcinoma)|prostate (cancer|carcinoma) with bone metastas", case=False)|results["exist_treatment_words"]|results["PreMRI_Gleason"].isin([7,8,9,10])|results["IMPRESSION"].str.contains("radiation|planning|carbon seed|carbon marker|fiducial marker", case=False).fillna(False)|results["FINDINGS"].str.contains("radiation|planning|carbon seed|carbon marker|fiducial marker", case=False).fillna(False)|results["PROSTATE_BED"].notnull()
     preMRI_inappropriate = results[["exist_incomplete_words", "exist_reseach_word"]].sum(axis=1)>=1
+
+    # The following few lines of code were added in April 2025 to update the post-treatment status for csPCa.
+    ## previous code
+    ### preMRI_csPCa = ds_report.str.contains("prostatectomy", case=False)|results["CLINICAL_HISTORY"].fillna("").str.contains("metastatic prostate (cancer|carcinoma)|prostate (cancer|carcinoma) with bone metastas", case=False)|results["exist_treatment_words"]|results["PreMRI_Gleason"].isin([7,8,9,10])|results["IMPRESSION"].str.contains("radiation|planning|carbon seed|carbon marker|fiducial marker", case=False).fillna(False)|results["FINDINGS"].str.contains("radiation|planning|carbon seed|carbon marker|fiducial marker", case=False).fillna(False)|results["PROSTATE_BED"].notnull()
+    ## new code using updated post-treatment bool. 
+    cond_meta = results["CLINICAL_HISTORY"].fillna("").str.contains("metastatic prostate (cancer|carcinoma)|prostate (cancer|carcinoma) with bone metastas", case=False)
+    cond_post_treatment = results["exist_treatment_words"]
+    cond_preMRIGleason_over7 = results["PreMRI_Gleason"].isin([7,8,9,10])
+    cond_with_prostatebed = results["PROSTATE_BED"].notnull()
+    preMRI_csPCa = cond_meta|cond_post_treatment|cond_preMRIGleason_over7|cond_with_prostatebed
 
     # assign pre-MRI status
     results.loc[preMRI_scr, "Pre_MR_Dx"] = "Scr"
@@ -1111,3 +1124,53 @@ def extract_LN_main(LN_section_text):
         location_length_dict = extract_LN_loc_cm(text_list)
         return location_length_dict
 
+def is_post_treatment(report):
+    # This function was created by Dr. Kurata to fix the post-treatment status in March 2025. 
+    # ポジティブなキーワードと、そのキーワードに対応する除外パターンのマッピング
+    positive_exclusion_map = {
+        # recurrence などの場合、その周辺に感染症関連（例：urinary tract infections など）があると偽陽性
+        r"(?i)(recurrence|recurrent|relapse)": [
+            r"(?i)urosepsis",
+            r"(?i)infections?",
+            r"(?i)urinary tract (?:infections?|symptoms)",
+            r"(?i)prostatitis",
+            r"(?i)UTIs?",
+            r"(?i)cystitis",
+            r"(?i)hernias?"
+        ],
+        r"(?i)(Prostatectomy|Radiation|HIFU|ADT|blation|proton|sbrt|imrt|rtx|radiotherapy|brachy|anti-androgen|lupron|androgen deprivation|adt|hormone|hormonal|brachytherapy|high-intensity focused ultrasound|TULSA|brachial therapy|radiated|nano knife|radiotherapy|beam|rrp|rarp)": [
+            r"(?i)contemplat",
+            r"(?i)evaluat",
+            r"(?i)plan",
+            r"(?i)schedul",
+            r"(?i)attempt",
+            r"(?i)staging prior to",
+            r"(?i)discuss",
+            r"(?i)Assessment",
+            r"(?i)pending",
+            r"(?i)prepar",
+            r"(?i)oncology service",
+            r"(?i)consider",
+            r"(?i)review"
+        ],
+        r"(?i)((post|following) prostate cancer treatment|nadir|s/p RT|vesicourethral|vesico-urethral|treatment planning|therapy planning|planning purposes|fiducial marker|carbon marker|fiducial markers|carbon markers|targeting marker|treatment position|dosimetry|hydrogel|choline)":[
+ 
+        ]
+    
+    }
+    
+    sentences = re.split(r'(?<=[.!?])\s+', report)
+    
+    for sentence in sentences:
+        for positive_regex, exclusion_list in positive_exclusion_map.items():
+            if re.search(positive_regex, sentence):
+                # 該当するポジティブキーワードが見つかった場合、対応する除外パターンが同じ文章に存在するかチェック
+                exclude = False
+                for excl in exclusion_list:
+                    if re.search(excl, sentence):
+                        exclude = True
+                        break
+                # 除外パターンがなければ、この文章は有効な陽性結果
+                if not exclude:
+                    return True
+    return False
