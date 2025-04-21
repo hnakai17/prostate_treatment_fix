@@ -19,6 +19,10 @@ import json
 from MRrep_fixing_treatment_status_byKurata import is_post_treatment
 from mayo_prostate.MRIcleaning.MRIcleaning import *
 
+preMRIstatus_jsonfile = "preMRI_status.json"
+with open(preMRIstatus_jsonfile, "r") as preMRI_status:
+    preMRI_status_dic = json.load(preMRI_status)
+
 def extract_new_preMRIstatus(MRI_spreadsheet):
     # focus on the report data
     try:
@@ -93,6 +97,9 @@ def extract_new_preMRIstatus(MRI_spreadsheet):
     results.loc[pre_MR_dx_manual_bool, "Pre_MR_Dx"] = "manual_check"
     print("- Flag manual check cases for Pre_MRI_Dx : done")
 
+    # Add previous exist_treatment_words column
+    results["old_exist_treatment_words"] = ds_report.str.contains(preMRI_status_dic["treatment_related"], case=False).fillna(False) #results["CLINICAL_HISTORY"].str.contains(preMRI_status_dic["treatment_related"], case=False).fillna(False)
+    
     # return a simple DataFrame 
     return_cols = ["exist_treatment_words", "Pre_MR_Dx_wo_mc", "Pre_MR_Dx"]
     return_cols_renamed = [f"new_{x}" for x in return_cols]
